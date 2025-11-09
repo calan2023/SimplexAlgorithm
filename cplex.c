@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <ctype.h>
 
 /**
@@ -45,7 +46,7 @@ void rowMultiplicationOperation(Tableau_t tableau, size_t rowNum, float multipli
 }
 
 /**
- * Adds one tableau column multiplied by a multiplier to a another tableau row
+ * Adds one tableau column multiplied by a multiplier to another tableau row
  */
 void rowAdditionOperation(Tableau_t tableau, size_t rowNum, float multiplier, size_t additionRowNum)
 {
@@ -207,10 +208,9 @@ uint16_t getNumColumns(void)
     FILE* file = fopen("cplex.txt", "r");
     char chr = '\0';
     uint8_t newline = 10;
-    uint8_t space = 32;
     do {
         chr = fgetc(file);
-        if (chr == space || chr == newline) {
+        if (isalpha(chr) || chr == newline) {
             numCols++;
         }
     } while (chr != newline);
@@ -232,9 +232,15 @@ void addOriginalTableauCoefficients(Tableau_t* tableau)
     for (size_t row = 0; row < tableau->numRows; row++) {
         tableau->coefficients[row] = calloc(tableau->numColumns, sizeof(float));
         for (size_t col = 0; col < tableau->numColumns; col++) {
+            bool seenVariable = false;
             do {
                 chr = fgetc(file);
-            } while (!isdigit(chr));
+                if (!isalnum(chr)) {
+                    seenVariable = false;
+                } else if (isalpha(chr)) {
+                    seenVariable = true;
+                }
+            } while (!isdigit(chr) || seenVariable);
 
             float coefficient = (float)(chr - '0');
             tableau->coefficients[row][col] = coefficient;
