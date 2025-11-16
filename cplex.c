@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <ctype.h>
+#include <string.h>
 
 /**
  * Defines tableau data type with the tableau's name, number of rows, number of columns,
@@ -17,6 +18,7 @@ typedef struct {
     size_t objectiveFunctionRow;
     size_t bColumn;
     float** coefficients;
+    char** variables;
 } Tableau_t;
 
 /**
@@ -25,10 +27,14 @@ typedef struct {
 void printTableau(Tableau_t tableau)
 {
     printf("%s\n", tableau.name);
+    for (size_t var = 0; var < tableau.numColumns-1; var++) {
+        printf(" %s \t", tableau.variables[var]);
+    }
+    printf(" b\n");
     for (size_t row = 0; row < tableau.numRows; row++) {
         printf("|");
         for (size_t col = 0; col < tableau.numColumns; col++) {
-            printf("%f ", tableau.coefficients[row][col]);
+            printf("%.5f ", tableau.coefficients[row][col]);
         }
         printf("|\n");
     }
@@ -179,23 +185,33 @@ void simplexAlgorithmLoop(Tableau_t tableau)
 }
 
 /**
+ * Gets the file pointer for the cplex.txt file where the LP problem is written
+ */
+FILE* getLPFile(void)
+{
+    FILE* file = fopen("cplex.txt", "r");
+    if (file == NULL) {
+        printf("Error: Could not open cplex.txt.\n");
+        exit(EXIT_FAILURE);
+    } else {
+        return file;
+    }   
+}
+
+/**
  * Gets the number of rows of coefficients in the LP problem
  */
 uint16_t getNumRows(void)
 {
+    FILE* file = getLPFile();
     uint16_t numRows = 0;
-    FILE* file = fopen("cplex.txt", "r");
-    char chr = '\0';
-    uint8_t newline = 10;
-    do {
-        chr = fgetc(file);
-        if (chr == newline || chr == EOF) {
-            numRows++;
-        }
-    } while (chr != EOF);
+    uint8_t maxLineLength = 50;
+    char line[maxLineLength];
+    while (fgets(line, maxLineLength, file)) {
+        numRows++;
+    };
 
     fclose(file);
-
     return numRows;
 }
 
@@ -204,10 +220,10 @@ uint16_t getNumRows(void)
  */
 uint16_t getNumColumns(void)
 {
+    FILE* file = getLPFile();
     uint16_t numCols = 0;
-    FILE* file = fopen("cplex.txt", "r");
     char chr = '\0';
-    uint8_t newline = 10;
+    char newline = '\n';
     do {
         chr = fgetc(file);
         if (isalpha(chr) || chr == newline) {
@@ -216,7 +232,6 @@ uint16_t getNumColumns(void)
     } while (chr != newline);
 
     fclose(file);
-
     return numCols;
 }
 
@@ -225,7 +240,7 @@ uint16_t getNumColumns(void)
  */
 void addOriginalTableauCoefficients(Tableau_t* tableau)
 {
-    FILE* file = fopen("cplex.txt", "r");
+    FILE* file = getLPFile();
     char chr = '\0';
 
     tableau->coefficients = calloc(tableau->numRows, sizeof(float));
@@ -245,6 +260,41 @@ void addOriginalTableauCoefficients(Tableau_t* tableau)
             float coefficient = (float)(chr - '0');
             tableau->coefficients[row][col] = coefficient;
         }
+    }
+
+    fclose(file);
+}
+
+/**
+ * Adds all variable names found in the LP problem file to the variables array of an original tableau
+ */
+void addOriginalVariables(Tableau_t* tableau)
+{
+    FILE* file = getLPFile();
+    tableau->variables = calloc(tableau->numColumns-1, sizeof(char*));
+    char variable[50];
+    size_t stringSize = 0;
+    char chr = '\0';
+    bool seenVariable = false;
+    for (size_t var = 0; var < tableau->numColumns-1; var++) {
+        do {
+            chr = fgetc(file);
+            if (isalpha(chr)) {
+                seenVariable = true;
+            }
+            if (seenVariable && isalnum(chr)) {
+                variable[stringSize++] = (char) chr;
+            }
+        } while (isalnum(chr));
+        variable[stringSize] = '\0';
+        tableau->variables[var] = calloc(stringSize, sizeof(char));
+        strcpy(tableau->variables[var], variable);
+
+        stringSize = 0;
+        seenVariable = false;
+        do {
+            chr = fgetc(file);
+        } while (!isalnum(chr));
     }
 
     fclose(file);
@@ -292,7 +342,28 @@ void addAuxiliaryTableauCoefficients(Tableau_t* original, Tableau_t* auxiliary)
 }
 
 /**
- * Frees allocated memory used for adding coefficients to the 2D array of a tableau
+ * Using an original tableau, adds all variable names to the variables array of an auxiliary tableau as well as auxiliary variable names
+ */
+void addAuxiliaryVariables(Tableau_t* original, Tableau_t* auxiliary)
+{
+    auxiliary->variables = calloc(auxiliary->numColumns-1, sizeof(char*));
+    for (size_t var = 0; var < auxiliary->numColumns-1; var++) {
+        if (var < original->bColumn) {
+            size_t stringSize = sizeof(original->variables[var]) / sizeof(original->variables[var][0]);
+            auxiliary->variables[var] = calloc(stringSize, sizeof(char));
+            strcpy(auxiliary->variables[var], original->variables[var]);
+        } else {
+            char variableNum = '0' + (var + 1);
+            char variable[] = {'x', variableNum, '\0'};
+            size_t stringSize = sizeof(variable) / sizeof(variable[0]);
+            auxiliary->variables[var] = calloc(stringSize, sizeof(char));
+            strcpy(auxiliary->variables[var], variable);
+        }
+    }
+}
+
+/**
+ * Frees all allocated memory for a tableau
  */
 void freeTableauCoefficients(Tableau_t tableau)
 {
@@ -300,6 +371,11 @@ void freeTableauCoefficients(Tableau_t tableau)
         free(tableau.coefficients[row]);
     }
     free(tableau.coefficients);
+
+    for (size_t var = 0; var < tableau.numColumns; var++) {
+        free(tableau.variables[var]);
+    }
+    free(tableau.variables);
 }
 
 /**
@@ -316,6 +392,7 @@ Tableau_t createOriginalTableau(void)
         .objectiveFunctionRow = rows - 1,
         .bColumn = cols - 1
     };
+    addOriginalVariables(&originalTableau);
     addOriginalTableauCoefficients(&originalTableau);
 
     return originalTableau;
@@ -335,7 +412,7 @@ Tableau_t createAuxiliaryTableau(Tableau_t originalTableau)
         .objectiveFunctionRow = auxRows - 1,
         .bColumn = auxCols - 1
     };
-
+    addAuxiliaryVariables(&originalTableau, &auxTableau);
     addAuxiliaryTableauCoefficients(&originalTableau, &auxTableau);
 
     return auxTableau;
@@ -370,7 +447,7 @@ void printSolution(Tableau_t tableau)
                 variableValue = tableau.coefficients[row][tableau.bColumn];
             }
         }
-        printf("Variable %d: %f\n", col, variableValue);
+        printf("Variable %s: %f\n", tableau.variables[col], variableValue);
     }
     printf("\n");
 
