@@ -52,7 +52,7 @@ void rowMultiplicationOperation(Tableau_t tableau, size_t rowNum, float multipli
 }
 
 /**
- * Adds one tableau column multiplied by a multiplier to another tableau row
+ * Adds one tableau row multiplied by a multiplier to another tableau row
  */
 void rowAdditionOperation(Tableau_t tableau, size_t rowNum, float multiplier, size_t additionRowNum)
 {
@@ -67,6 +67,7 @@ void rowAdditionOperation(Tableau_t tableau, size_t rowNum, float multiplier, si
 int32_t mostNegativeColumn(Tableau_t tableau)
 {
     int32_t mostNegativeCol = 0;
+
     while (mostNegativeCol < tableau.bColumn && tableau.coefficients[tableau.objectiveFunctionRow][mostNegativeCol] >= 0) {
         mostNegativeCol++;
     }
@@ -89,6 +90,9 @@ int32_t mostNegativeColumn(Tableau_t tableau)
 int32_t smallestRatioRow(Tableau_t tableau, int32_t mostNegativeCol)
 {
     int32_t smallestRow = 0;
+    float smallestRatio;
+    float ratio;
+
     while (smallestRow < tableau.objectiveFunctionRow && tableau.coefficients[smallestRow][mostNegativeCol] <= 0) {
         smallestRow++;
     }
@@ -96,10 +100,10 @@ int32_t smallestRatioRow(Tableau_t tableau, int32_t mostNegativeCol)
         return -1;
     }
 
-    float smallestRatio = tableau.coefficients[smallestRow][tableau.bColumn] / tableau.coefficients[smallestRow][mostNegativeCol];
+    smallestRatio = tableau.coefficients[smallestRow][tableau.bColumn] / tableau.coefficients[smallestRow][mostNegativeCol];
     for (size_t row = smallestRow; row < tableau.objectiveFunctionRow; row++) {
         if (tableau.coefficients[row][mostNegativeCol] > 0) {
-            float ratio = tableau.coefficients[row][tableau.bColumn] / tableau.coefficients[row][mostNegativeCol];
+            ratio = tableau.coefficients[row][tableau.bColumn] / tableau.coefficients[row][mostNegativeCol];
             if (ratio < smallestRatio) {
                 smallestRatio = ratio;
                 smallestRow = row;
@@ -117,15 +121,18 @@ int32_t smallestRatioRow(Tableau_t tableau, int32_t mostNegativeCol)
 void bringColumnIntoBasis(Tableau_t tableau, int32_t mostNegativeCol, int32_t smallestRatioRow)
 {
     float pivot = tableau.coefficients[smallestRatioRow][mostNegativeCol];
+    float coefficient;
+    float multiplier;
+
     if (pivot != 1) {
-        float multiplier = 1 / pivot;
+        multiplier = 1 / pivot;
         rowMultiplicationOperation(tableau, smallestRatioRow, multiplier);
     }
 
     for (size_t row = 0; row < tableau.numRows; row++) {
         if (row != smallestRatioRow) {
-            float coefficient = tableau.coefficients[row][mostNegativeCol];
-            float multiplier = coefficient * -1;
+            coefficient = tableau.coefficients[row][mostNegativeCol];
+            multiplier = coefficient * -1;
             rowAdditionOperation(tableau, row, multiplier, smallestRatioRow);
         }
     }
@@ -137,20 +144,25 @@ void bringColumnIntoBasis(Tableau_t tableau, int32_t mostNegativeCol, int32_t sm
  */
 void clearOutBottomRow(Tableau_t tableau)
 {
+    float columnSum;
+    float coefficient;
+    float multiplier;
+    int8_t pivotRow;
+
     for (size_t col = 0; col < tableau.numColumns; col++) {
-        float columnSum = 0;
+        columnSum = 0;
         for (size_t row = 0; row < tableau.objectiveFunctionRow; row++) {
             columnSum += tableau.coefficients[row][col];
         }
         if (columnSum == 1) {
-            int8_t pivotRow = 0;
+            pivotRow = 0;
             for (size_t row = 0; row < tableau.objectiveFunctionRow; row++) {
                 if (tableau.coefficients[row][col] == 1) {
                     pivotRow = row;
                 }
             }
-            float coefficient = tableau.coefficients[tableau.objectiveFunctionRow][col];
-            float multiplier = coefficient * -1;
+            coefficient = tableau.coefficients[tableau.objectiveFunctionRow][col];
+            multiplier = coefficient * -1;
             rowAdditionOperation(tableau, tableau.objectiveFunctionRow, multiplier, pivotRow);
         }
     }
@@ -163,14 +175,17 @@ void clearOutBottomRow(Tableau_t tableau)
  */
 void simplexAlgorithmLoop(Tableau_t tableau)
 {
+    int32_t mostNegCol;
+    int32_t smallestRow;
+
     printTableau(tableau);
 
     clearOutBottomRow(tableau);
     printf("After clearing out:\n");
     printTableau(tableau);
 
-    int32_t mostNegCol = mostNegativeColumn(tableau);
-    int32_t smallestRow = -1;
+    mostNegCol = mostNegativeColumn(tableau);
+    smallestRow = -1;
     while (mostNegCol != -1) {
         printf("Most negative column: %d\n", mostNegCol);
         smallestRow = smallestRatioRow(tableau, mostNegCol);
@@ -207,9 +222,10 @@ uint16_t getNumRows(void)
     uint16_t numRows = 0;
     uint8_t maxLineLength = 50;
     char line[maxLineLength];
+
     while (fgets(line, maxLineLength, file)) {
         numRows++;
-    };
+    }
 
     fclose(file);
     return numRows;
@@ -224,6 +240,7 @@ uint16_t getNumColumns(void)
     uint16_t numCols = 0;
     char chr = '\0';
     char newline = '\n';
+
     do {
         chr = fgetc(file);
         if (isalpha(chr) || chr == newline) {
@@ -242,12 +259,14 @@ void addOriginalTableauCoefficients(Tableau_t* tableau)
 {
     FILE* file = getLPFile();
     char chr = '\0';
+    bool seenVariable;
+    float coefficient;
 
     tableau->coefficients = calloc(tableau->numRows, sizeof(float));
     for (size_t row = 0; row < tableau->numRows; row++) {
         tableau->coefficients[row] = calloc(tableau->numColumns, sizeof(float));
         for (size_t col = 0; col < tableau->numColumns; col++) {
-            bool seenVariable = false;
+            seenVariable = false;
             do {
                 chr = fgetc(file);
                 if (!isalnum(chr)) {
@@ -257,7 +276,7 @@ void addOriginalTableauCoefficients(Tableau_t* tableau)
                 }
             } while (!isdigit(chr) || seenVariable);
 
-            float coefficient = (float)(chr - '0');
+            coefficient = (float)(chr - '0');
             tableau->coefficients[row][col] = coefficient;
         }
     }
@@ -271,11 +290,12 @@ void addOriginalTableauCoefficients(Tableau_t* tableau)
 void addOriginalVariables(Tableau_t* tableau)
 {
     FILE* file = getLPFile();
-    tableau->variables = calloc(tableau->numColumns-1, sizeof(char*));
-    char variable[50];
     size_t stringSize = 0;
     char chr = '\0';
     bool seenVariable = false;
+    char variable[50];
+
+    tableau->variables = calloc(tableau->numColumns-1, sizeof(char*));
     for (size_t var = 0; var < tableau->numColumns-1; var++) {
         do {
             chr = fgetc(file);
@@ -307,12 +327,13 @@ void addOriginalVariables(Tableau_t* tableau)
 void addAuxiliaryTableauCoefficients(Tableau_t* original, Tableau_t* auxiliary)
 {
     size_t colWithAuxVariable = original->bColumn;
+    float coefficient;
 
     auxiliary->coefficients = calloc(auxiliary->numRows, sizeof(float));
     for (size_t row = 0; row < auxiliary->objectiveFunctionRow; row++) {
         auxiliary->coefficients[row] = calloc(auxiliary->numColumns, sizeof(float));
         for (size_t col = 0; col < auxiliary->numColumns; col++) {
-            float coefficient = 0;
+            coefficient = 0;
 
             if (col < original->bColumn) {
                 coefficient = original->coefficients[row][col];
@@ -331,7 +352,7 @@ void addAuxiliaryTableauCoefficients(Tableau_t* original, Tableau_t* auxiliary)
     
     auxiliary->coefficients[auxiliary->objectiveFunctionRow] = calloc(auxiliary->numColumns, sizeof(float));
     for (size_t col = 0; col < auxiliary->numColumns; col++) {
-        float coefficient = 0;
+        coefficient = 0;
 
         if (original->bColumn <= col && col < auxiliary->bColumn) {
             coefficient = 1;
@@ -346,16 +367,20 @@ void addAuxiliaryTableauCoefficients(Tableau_t* original, Tableau_t* auxiliary)
  */
 void addAuxiliaryVariables(Tableau_t* original, Tableau_t* auxiliary)
 {
+    size_t stringSize;
+    char variableNum[20];
+    char variable[20];
+
     auxiliary->variables = calloc(auxiliary->numColumns-1, sizeof(char*));
     for (size_t var = 0; var < auxiliary->numColumns-1; var++) {
         if (var < original->bColumn) {
-            size_t stringSize = sizeof(original->variables[var]) / sizeof(original->variables[var][0]);
+            stringSize = sizeof(original->variables[var]) / sizeof(original->variables[var][0]);
             auxiliary->variables[var] = calloc(stringSize, sizeof(char));
             strcpy(auxiliary->variables[var], original->variables[var]);
         } else {
-            char variableNum = '0' + (var + 1);
-            char variable[] = {'x', variableNum, '\0'};
-            size_t stringSize = sizeof(variable) / sizeof(variable[0]);
+            sprintf(variableNum, "%d", var + 1);
+            sprintf(variable, "x%s", variableNum);
+            stringSize = sizeof(variable) / sizeof(variable[0]);
             auxiliary->variables[var] = calloc(stringSize, sizeof(char));
             strcpy(auxiliary->variables[var], variable);
         }
@@ -439,9 +464,12 @@ void reassignOriginalTableauCoefficients(Tableau_t original, Tableau_t auxiliary
  */
 void printSolution(Tableau_t tableau)
 {
+    float variableValue;
+    float optimalValue;
+
     printf("Optimal solution:\n");
     for (size_t col = 0; col < tableau.bColumn; col++) {
-        float variableValue = 0;
+        variableValue = 0;
         for (size_t row = 0; row < tableau.objectiveFunctionRow; row++) {
             if (tableau.coefficients[row][col] == 1) {
                 variableValue = tableau.coefficients[row][tableau.bColumn];
@@ -451,7 +479,7 @@ void printSolution(Tableau_t tableau)
     }
     printf("\n");
 
-    float optimalValue = tableau.coefficients[tableau.objectiveFunctionRow][tableau.bColumn] * -1;
+    optimalValue = tableau.coefficients[tableau.objectiveFunctionRow][tableau.bColumn] * -1;
     printf("Optimal Value: %f\n", optimalValue);
 }
 
